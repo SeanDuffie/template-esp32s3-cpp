@@ -1,22 +1,64 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <ArduinoOTA.h>
+#include <ESPAsyncWebServer.h>
 
-#define RGB_LED_PIN 48 // Default WS2812 pin for ESP32-S3 DevKitC
+#define RGB_LED_PIN 38 // Default WS2812 pin for ESP32-S3 DevKitC
+
 
 const char* ssid = "YOUR_SSID";
 const char* password = "YOUR_PASSWORD";
 
+static bool led_state = false;
+
+// Initialize Servers
+WiFiServer telnetServer(23);
+WiFiClient telnetClient;
+
+AsyncWebServer httpServer(80);
+AsyncWebSocket ws("/ws");
+
+// Unified Print Function
+void debug_print(const char* message) {
+    // 1. Hardware Serial
+    Serial.print(message);
+
+    // 2. Telnet Client
+    if (telnetClient && telnetClient.connected()) {
+        telnetClient.print(message);
+        telnetClient.print("\r");
+    }
+
+    // 3. WebSocket Clients
+    ws.textAll(message);
+}
+
+void debug_println(const char* message) {
+    debug_print(message);
+    debug_print("\n");
+}
+
+void debug_printf(const char* format, ...) {
+    char buffer[256];
+
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+
+    debug_print(buffer);
+}
+
 void setup_wifi() {
-    Serial.print("Connecting to Wi-Fi");
+    debug_print("Connecting to Wi-Fi");
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
     }
-    Serial.println("\nConnected. IP Address: ");
-    Serial.println(WiFi.localIP());
+    debug_println("\nConnected. IP Address: ");
+    debug_printf("%s\n", WiFi.localIP());
 }
 
 void setup_ota() {
@@ -37,28 +79,65 @@ void setup_ota() {
             type = "filesystem";
         }
         // NOTE: if updating SPIFFS/LittleFS this would be the place to unmount it
-        Serial.println("Start updating " + type);
+        debug_printf("Start updating %s", type);
     });
     
     ArduinoOTA.onEnd([]() {
-        Serial.println("\nEnd");
+        debug_println("\nEnd");
     });
     
     ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-        Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+        debug_printf("Progress: %u%%\r", (progress / (total / 100)));
     });
     
     ArduinoOTA.onError([](ota_error_t error) {
-        Serial.printf("Error[%u]: ", error);
-        if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-        else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-        else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-        else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-        else if (error == OTA_END_ERROR) Serial.println("End Failed");
+        debug_printf("Error[%u]: ", error);
+        if (error == OTA_AUTH_ERROR) debug_println("Auth Failed");
+        else if (error == OTA_BEGIN_ERROR) debug_println("Begin Failed");
+        else if (error == OTA_CONNECT_ERROR) debug_println("Connect Failed");
+        else if (error == OTA_RECEIVE_ERROR) debug_println("Receive Failed");
+        else if (error == OTA_END_ERROR) debug_println("End Failed");
     });
 
     ArduinoOTA.begin();
-    Serial.println("OTA Ready.");
+    debug_println("OTA Ready.");
+}
+
+void setup_debug_servers() {
+    // Start Telnet
+    telnetServer.begin();
+    telnetServer.setNoDelay(true);
+
+    // Start WebSockets
+    ws.onEvent([](AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
+        if (type == WS_EVT_CONNECT) {
+            Serial.printf("WS Client connected: %u\n", client->id());
+        } else if (type == WS_EVT_DISCONNECT) {
+            Serial.printf("WS Client disconnected: %u\n", client->id());
+        }
+    });
+    httpServer.addHandler(&ws);
+    httpServer.begin();
+}
+
+void handle_telnet() {
+    if (telnetServer.hasClient()) {
+        if (!telnetClient || !telnetClient.connected()) {
+            if (telnetClient) telnetClient.stop();
+            telnetClient = telnetServer.available();
+            Serial.println("New Telnet client connected.");
+        } else {
+            WiFiClient temp = telnetServer.available();
+            temp.stop();
+        }
+    }
+
+    // FIX: Clear incoming negotiation bytes so the socket doesn't lock up
+    if (telnetClient && telnetClient.connected() && telnetClient.available()) {
+        while (telnetClient.available()) {
+            telnetClient.read(); 
+        }
+    }
 }
 
 void setup() {
@@ -70,7 +149,11 @@ void setup() {
     setup_wifi();
     Serial.printf("\nConnected. IP: %s\n", WiFi.localIP().toString().c_str());
 
-    // 2. Initialize OTA Server
+    // 2. Establish Debugging ()
+    setup_debug_servers();
+    debug_printf("\nConnected Debuggers. IP: %s\n", WiFi.localIP().toString().c_str());
+
+    // 3. Initialize OTA Server
     setup_ota();
 }
 
@@ -82,16 +165,17 @@ void loop() {
     static uint32_t last_millis = 0;
     if (millis() - last_millis >= 1000) {
         last_millis = millis();
-        
-        static bool led_state = false;
+
         led_state = !led_state;
-        
+
         if (led_state) {
-            neopixelWrite(RGB_LED_PIN, 0, 50, 0); // Green
+            neopixelWrite(RGB_LED_PIN, 0, 0, 50); // Blue
         } else {
             neopixelWrite(RGB_LED_PIN, 0, 0, 0);  // Off
         }
 
-        Serial.println("Heartbeat: System Nominal");
+        debug_println("Heartbeat: System Nominal");
+
+        handle_telnet();
     }
 }

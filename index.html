@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ESP32 WebSocket Monitor</title>
+    <style>
+        body { background: #1e1e1e; color: #00ff00; font-family: monospace; padding: 20px; }
+        #terminal { height: 80vh; overflow-y: auto; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <div id="terminal"></div>
+    <script>
+        const terminal = document.getElementById('terminal');
+        // Replace with your ESP32's IP address
+        const ws = new WebSocket('ws://192.168.0.181/ws'); 
+
+        ws.onopen = () => terminal.innerHTML += 'Connected to ESP32...\n';
+        ws.onclose = () => terminal.innerHTML += '\nDisconnected.\n';
+        ws.onerror = (err) => terminal.innerHTML += '\nError: ' + err + '\n';
+        
+        ws.onmessage = (event) => {
+            terminal.innerHTML += event.data;
+            terminal.scrollTop = terminal.scrollHeight; // Auto-scroll to bottom
+        };
+    </script>
+</body>
+</html>
