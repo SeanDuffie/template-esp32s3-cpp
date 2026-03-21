@@ -2,14 +2,14 @@
 #include <WiFi.h>
 #include <ArduinoOTA.h>
 #include <ESPAsyncWebServer.h>
+#include <ESPAsyncWiFiManager.h>
 
 #define RGB_LED_PIN 38 // Default WS2812 pin for ESP32-S3 DevKitC
 
-
-const char* ssid = "YOUR_SSID";
-const char* password = "YOUR_PASSWORD";
-
 static bool led_state = false;
+
+// Define a temporary DNS server for the captive portal
+DNSServer dns;
 
 // Initialize Servers
 WiFiServer telnetServer(23);
@@ -49,16 +49,31 @@ void debug_printf(const char* format, ...) {
     debug_print(buffer);
 }
 
-void setup_wifi() {
-    debug_print("Connecting to Wi-Fi");
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-    }
-    debug_println("\nConnected. IP Address: ");
-    debug_printf("%s\n", WiFi.localIP());
+void setup_wifi_manager() {
+    Serial.println("Starting Wi-Fi Manager...");
+
+    // Local intialization. Once its business is done, there is no need to keep it around
+    // Pass the async web server and dns server to the manager
+    AsyncWiFiManager wm(&httpServer, &dns);
+
+    // Reset settings for testing (Uncomment to wipe saved credentials on boot)
+    // wm.resetSettings();
+
+    // Set a custom hostname for the ESP32 on your network
+    WiFi.setHostname("ESP32-S3-Sensor-cpp");
+
+    // Automatically connect using saved credentials,
+    // if connection fails, it starts an access point with the specified name
+    // and goes into a blocking loop awaiting configuration
+    if (!wm.autoConnect("ESP32-Setup-Portal")) {
+        Serial.println("Failed to connect and hit timeout");
+        ESP.restart(); // Reset and try again
+    } 
+    
+    // If you get here you have connected to the WiFi
+    Serial.println("\nConnected to Wi-Fi.");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
 }
 
 void setup_ota() {
@@ -146,7 +161,7 @@ void setup() {
     while (!Serial && millis() < 5000) { delay(10); }
 
     // 1. Establish Wi-Fi (Blocking)
-    setup_wifi();
+    setup_wifi_manager();
     Serial.printf("\nConnected. IP: %s\n", WiFi.localIP().toString().c_str());
 
     // 2. Establish Debugging ()
