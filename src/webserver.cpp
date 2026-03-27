@@ -26,7 +26,7 @@ void setup_webserver() {
     httpServer.addHandler(&ws);
 
     // 4. Serve Frontend
-    httpServer.serveStatic("/", LittleFS, "/").setDefaultFile("App.svelte");
+    httpServer.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
 
     // 5. Start Server
     httpServer.begin();
