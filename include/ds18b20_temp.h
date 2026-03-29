@@ -3,7 +3,8 @@
 #include <DallasTemperature.h>
 
 struct TempData {
-    float temperatureF; // °F
+    float tempC; // °C
+    float tempF; // °F
     bool valid;
 };
 

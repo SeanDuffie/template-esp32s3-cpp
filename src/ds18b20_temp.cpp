@@ -32,11 +32,13 @@ TempData DS18B20Sensor::readData() {
     // DallasTemperature returns DEVICE_DISCONNECTED_C (-127.0) if the hardware fails
     if (tempC <= -127.0) {
         data.valid = false;
-        data.temperatureF = 0.0;
+        data.tempC = 0.0;
+        data.tempF = 0.0;
         debug_printf("DS18B20 hardware error: Sensor dropped at index %d.\n", _index);
     } else {
         data.valid = true;
-        data.temperatureF = DallasTemperature::toFahrenheit(tempC);
+        data.tempC = tempC;
+        data.tempF = DallasTemperature::toFahrenheit(tempC);
     }
 
     return data;
